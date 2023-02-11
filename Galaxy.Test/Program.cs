@@ -24,6 +24,8 @@ var paths = new string[] { "544550", "2822613339", "About", "About.xml" };
 sw.Restart();
 var file = folder[paths];
 
+//await foreach ()
+
 sw.Stop();
 if (file != null)
 {

@@ -41,7 +41,6 @@ namespace Galaxy.Sync
             this.SubFolders = new NamedList<FolderData>();
         }
 
-        public string Root { get; set; }
         public string Name { get; set; }
 
         public NamedList<FileData> Files { get; private set; }
@@ -52,7 +51,6 @@ namespace Galaxy.Sync
             var root = new DirectoryInfo(path);
             var data = await GetFolderData(root);
 
-            this.Root = path;
             this.Name = data.Name;
             this.Files = data.Files;
             this.SubFolders = data.SubFolders;
@@ -78,6 +76,34 @@ namespace Galaxy.Sync
             folderData.SubFolders.AddRange(subFolders);
 
             return folderData;
+        }
+
+        public async IAsyncEnumerable<string[]> GetChangedFilesAsync(FolderData source, List<string>? parents = null)
+        {
+            if (parents == null)
+            {
+                parents = new List<string>();
+            }
+            else
+            {
+                parents.Add(source.Name);
+            }
+
+            foreach (var file in source.Files)
+            {
+                // test
+                yield return new string[] { file.Name };
+            }
+
+            foreach (var folder in source.SubFolders)
+            {
+                parents.Add(folder.Name);
+                await foreach (var item in GetChangedFilesAsync(folder, parents))
+                {
+                    parents.AddRange(item);
+                    yield return parents.ToArray();
+                }
+            }
         }
     }
 }
