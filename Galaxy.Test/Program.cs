@@ -5,36 +5,26 @@ using Serilog;
 using System.Diagnostics;
 
 Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Verbose()
     .WriteTo.Console()
     .CreateLogger();
 
-Log.Information("Creating folder data");
-var root = @"C:\Program Files (x86)\Steam\steamapps\workshop\content";
+var jsonFile = @"C:\Users\danie\Desktop\test.json";
+var root = @"C:\Program Files (x86)\Steam\steamapps";
 
-var sw = Stopwatch.StartNew();
+var storage = new SyncStorage(root);
 
-var folder = new FolderData();
-await folder.Create(root);
-
-sw.Stop();
-
-Log.Information("created Folder in {sw}", sw.ElapsedMilliseconds);
-var paths = new string[] { "544550", "2822613339", "About", "About.xml" };
-
-sw.Restart();
-var file = folder[paths];
-
-//await foreach ()
-
-sw.Stop();
-if (file != null)
+void Storage_UpdateCompleted()
 {
-    Log.Information("File found in {sw}\n{@json}", sw.ElapsedMilliseconds, file);
+    var json = JsonConvert.SerializeObject(storage, Formatting.Indented);
+
+    File.Delete(jsonFile);
+    File.WriteAllText(jsonFile, json);
+
+    Log.Information("Saved");
 }
-else
-{
-    Log.Warning("File not found");
-}
+
+storage.Update();
 
 Console.ReadLine();
 

@@ -7,20 +7,22 @@ using System.Threading.Tasks;
 
 namespace Galaxy.Sync
 {
-    public class FileData : INamedElement
+    public class FileData
     {
         public FileData()
         {
 
         }
 
-        public FileData(FileInfo info)
+        public FileData(string root, FileInfo info)
         {
-            this.Name = info.Name;
             this.Size = info.Length;
+            this.Name = info.Name;
 
             this.CreationTime = info.CreationTime;
             this.LastWriteTime = info.LastWriteTime;
+
+            this.Flags = new List<SyncFlag>();
         }
 
         public long Size { get; set; }
@@ -28,5 +30,7 @@ namespace Galaxy.Sync
 
         public DateTime CreationTime { get; private set; }
         public DateTime LastWriteTime { get; private set; }
+
+        public List<SyncFlag> Flags { get; set; }
     }
 }

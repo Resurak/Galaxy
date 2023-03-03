@@ -27,6 +27,9 @@ namespace Galaxy.Commons
         public byte[]? Data { get; private set; }
         public ConnectionStatus Status { get; private set; }
 
+        public bool HasData => 
+            Data != null && Data.Length > 0;
+
         public dynamic? GetObject()
         {
             if (Data != null)

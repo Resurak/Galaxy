@@ -4,10 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Galaxy.Commons
+namespace Galaxy.Sync
 {
-    public interface INamedElement
+    public class SyncResponse
     {
-        public string Name { get; set; }
     }
 }

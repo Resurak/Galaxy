@@ -8,101 +8,70 @@ using System.Threading.Tasks;
 
 namespace Galaxy.Sync
 {
-    public class FolderData : INamedElement
+    public class FolderData
     {
-        public FileData? this[string[] paths]
+        public FolderData() 
         {
-            get
+            this.Path = "***";
+            this.Flags = new List<SyncFlag>();
+
+            this.Files = new List<FileData>();
+            this.SubFolders = new List<FolderData>();
+        }
+
+        public FolderData(string path) : this() 
+        {
+            this.Path = path;
+        }
+
+        public string Path { get; set; }
+        public List<SyncFlag> Flags { get; set; }
+
+        public List<FileData> Files { get; set; }
+        public List<FolderData> SubFolders { get; set; }
+
+        public void UpdateFiles(DirectoryInfo info)
+        {
+            this.Files.Clear();
+            foreach (var file in info.EnumerateFiles())
             {
-                if (paths.Length == 1)
+                try
                 {
-                    return Files[paths[0]];
+                    var data = new FileData(Path, file);
+                    this.Files.Add(data);
                 }
-                else
+                catch (Exception ex)
                 {
-                    var sub = SubFolders[paths[0]];
-                    if (sub != null)
-                    {
-                        return sub[paths.Skip(1).ToArray()];
-                    }
+                    Log.Warning(ex, "Exception thrown while creating {name} of {path}".AddCaller(), nameof(FileData), file.FullName);
                 }
-
-                return null;
             }
         }
 
-        public FolderData() { }
-
-        public FolderData(DirectoryInfo info)
+        public async Task UpdateFolder()
         {
-            this.Name = info.Name;
-
-            this.Files = new NamedList<FileData>();
-            this.SubFolders = new NamedList<FolderData>();
-        }
-
-        public string Name { get; set; }
-
-        public NamedList<FileData> Files { get; private set; }
-        public NamedList<FolderData> SubFolders { get; private set; }
-
-        public async Task Create(string path)
-        {
-            var root = new DirectoryInfo(path);
-            var data = await GetFolderData(root);
-
-            this.Name = data.Name;
-            this.Files = data.Files;
-            this.SubFolders = data.SubFolders;
-        }
-
-        async Task<FolderData> GetFolderData(DirectoryInfo rootDirInfo)
-        {
-            var folderData = new FolderData(rootDirInfo);
-            foreach (var fileInfo in rootDirInfo.EnumerateFiles())
+            try
             {
-                var file = new FileData(fileInfo);
-                folderData.Files.Add(file);
-            }
+                var info = new DirectoryInfo(Path);
+                UpdateFiles(info);
 
-            var tasks = new List<Task<FolderData>>();
-            foreach (var dirInfo in rootDirInfo.EnumerateDirectories())
-            {
-                var task = GetFolderData(dirInfo);
-                tasks.Add(task);
-            }
+                var tasks = new List<Task>();
+                var folders = new List<FolderData>();
 
-            var subFolders = await Task.WhenAll(tasks);
-            folderData.SubFolders.AddRange(subFolders);
-
-            return folderData;
-        }
-
-        public async IAsyncEnumerable<string[]> GetChangedFilesAsync(FolderData source, List<string>? parents = null)
-        {
-            if (parents == null)
-            {
-                parents = new List<string>();
-            }
-            else
-            {
-                parents.Add(source.Name);
-            }
-
-            foreach (var file in source.Files)
-            {
-                // test
-                yield return new string[] { file.Name };
-            }
-
-            foreach (var folder in source.SubFolders)
-            {
-                parents.Add(folder.Name);
-                await foreach (var item in GetChangedFilesAsync(folder, parents))
+                foreach (var folder in info.EnumerateDirectories())
                 {
-                    parents.AddRange(item);
-                    yield return parents.ToArray();
+                    var data = new FolderData(folder.FullName);
+                    var task = data.UpdateFolder();
+
+                    folders.Add(data);
+                    tasks.Add(task);
                 }
+
+                await Task.WhenAll(tasks);
+                this.SubFolders.AddRange(folders);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Exception thrown while updating {name} of {path}".AddCaller(), nameof(FolderData), this.Path);
             }
         }
     }
