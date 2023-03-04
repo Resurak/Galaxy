@@ -9,22 +9,43 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateLogger();
 
-var jsonFile = @"C:\Users\danie\Desktop\test.json";
+var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+var jsonFile = Path.Combine(desktop, "jsonTest.json");
 var root = @"C:\Program Files (x86)\Steam\steamapps";
 
-var storage = new SyncStorage(root);
+var dt = DateTime.Now;
 
-void Storage_UpdateCompleted()
+var share = new SyncShare(root, "Placeholder");
+share.Updated += Share_Updated;
+
+dt = DateTime.Now;
+share.Update();
+
+void Share_Updated()
 {
-    var json = JsonConvert.SerializeObject(storage, Formatting.Indented);
+    Log.Information("share updated in {ms}", (DateTime.Now - dt).TotalMilliseconds);
+    var json = JsonConvert.SerializeObject(share, Formatting.Indented);
 
-    File.Delete(jsonFile);
+    if (File.Exists(jsonFile))
+        File.Delete(jsonFile);
+
     File.WriteAllText(jsonFile, json);
-
-    Log.Information("Saved");
 }
 
-storage.Update();
+//var storage = new SyncStorage(root);
+
+//void Storage_UpdateCompleted()
+//{
+//    var json = JsonConvert.SerializeObject(storage, Formatting.Indented);
+
+//    File.Delete(jsonFile);
+//    File.WriteAllText(jsonFile, json);
+
+//    Log.Information("Saved");
+//}
+
+//storage.Update();
 
 Console.ReadLine();
 

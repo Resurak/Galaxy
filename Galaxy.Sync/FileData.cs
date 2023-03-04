@@ -14,15 +14,13 @@ namespace Galaxy.Sync
 
         }
 
-        public FileData(string root, FileInfo info)
+        public FileData(FileInfo info)
         {
             this.Size = info.Length;
             this.Name = info.Name;
 
             this.CreationTime = info.CreationTime;
             this.LastWriteTime = info.LastWriteTime;
-
-            this.Flags = new List<SyncFlag>();
         }
 
         public long Size { get; set; }
@@ -30,7 +28,5 @@ namespace Galaxy.Sync
 
         public DateTime CreationTime { get; private set; }
         public DateTime LastWriteTime { get; private set; }
-
-        public List<SyncFlag> Flags { get; set; }
     }
 }

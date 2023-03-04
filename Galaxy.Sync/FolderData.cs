@@ -12,8 +12,8 @@ namespace Galaxy.Sync
     {
         public FolderData() 
         {
-            this.Path = "***";
-            this.Flags = new List<SyncFlag>();
+            this.Name = "!Root";
+            this.FullName = "***";
 
             this.Files = new List<FileData>();
             this.SubFolders = new List<FolderData>();
@@ -21,46 +21,34 @@ namespace Galaxy.Sync
 
         public FolderData(string path) : this() 
         {
-            this.Path = path;
+            this.FullName = path;
         }
 
-        public string Path { get; set; }
-        public List<SyncFlag> Flags { get; set; }
+        public FolderData(string name, string fullName) : this(fullName)
+        {
+            this.Name = name;
+        }
+
+        public string Name { get; set; }
+        public string FullName { get; set; }
 
         public List<FileData> Files { get; set; }
         public List<FolderData> SubFolders { get; set; }
 
-        public void UpdateFiles(DirectoryInfo info)
-        {
-            this.Files.Clear();
-            foreach (var file in info.EnumerateFiles())
-            {
-                try
-                {
-                    var data = new FileData(Path, file);
-                    this.Files.Add(data);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning(ex, "Exception thrown while creating {name} of {path}".AddCaller(), nameof(FileData), file.FullName);
-                }
-            }
-        }
-
-        public async Task UpdateFolder()
+        public async Task Update()
         {
             try
             {
-                var info = new DirectoryInfo(Path);
-                UpdateFiles(info);
+                var info = new DirectoryInfo(FullName);
+                GetFiles(info);
 
                 var tasks = new List<Task>();
                 var folders = new List<FolderData>();
 
                 foreach (var folder in info.EnumerateDirectories())
                 {
-                    var data = new FolderData(folder.FullName);
-                    var task = data.UpdateFolder();
+                    var data = new FolderData(folder.Name, folder.FullName);
+                    var task = data.Update();
 
                     folders.Add(data);
                     tasks.Add(task);
@@ -71,7 +59,24 @@ namespace Galaxy.Sync
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Exception thrown while updating {name} of {path}".AddCaller(), nameof(FolderData), this.Path);
+                Log.Warning(ex, "Exception thrown while updating {name} of {path}".AddCaller(), nameof(FolderData), this.FullName);
+            }
+        }
+
+        void GetFiles(DirectoryInfo info)
+        {
+            this.Files.Clear();
+            foreach (var file in info.EnumerateFiles())
+            {
+                try
+                {
+                    var data = new FileData(file);
+                    this.Files.Add(data);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Exception thrown while creating {name} of {path}".AddCaller(), nameof(FileData), file.FullName);
+                }
             }
         }
     }
