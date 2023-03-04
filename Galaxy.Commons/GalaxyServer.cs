@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Galaxy.Sync
+namespace Galaxy.Commons
 {
-    public class SyncResponse
+    public class GalaxyServer
     {
     }
 }

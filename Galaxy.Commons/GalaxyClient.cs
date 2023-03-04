@@ -15,10 +15,11 @@ namespace Galaxy.Commons
     {
         public GalaxyClient() 
         {
-            Worker = new Thread(ConnectionLoop);
+            
         }
 
-        Thread Worker;
+        Thread? ConnectThread;
+        Thread? ConnectionLoopThread;
 
         TcpClient? TcpClient;
         NetworkStream? NetStream;
@@ -27,41 +28,88 @@ namespace Galaxy.Commons
         public event Action? Disconnected;
         public event DataEventHandler? DataReceived;
 
-        public NetStatus Status { get; set; }
+        public int BufferSize { get; set; } = 128 * 1024;
 
-        public async Task ConnectAsync(string address = "127.0.0.1", int port = 6969)
+        public StreamFlag StreamFlag { get; set; }
+        public ConnectionStatus ConnectionStatus { get; private set; }
+
+        bool _isReading; // not used
+
+        public void Connect(string address = "127.0.0.1", int port = 6969)
         {
             try
             {
                 var ip = IPAddress.Parse(address);
                 var endPoint = new IPEndPoint(ip, port);
 
-                TcpClient = new TcpClient();
-                await TcpClient.ConnectAsync(endPoint);
-
-                NetStream = new NetworkStream(TcpClient.Client);
-                Status = NetStatus.Connected;
-
-                Worker.Start();
-                Connected?.Invoke();
+                ConnectThread = new Thread(() => DoConnect_Thread(endPoint));
+                ConnectThread.Start();
             }
             catch (Exception ex)
             {
                 Log.Warning(ex, "Exception thrown while connecting to {address}:{port}".AddCaller(), address, port);
             }
-            finally
-            {
-                if (Status != NetStatus.Connected)
-                {
-                    Close();
-                }
-            }
         }
 
-        void ConnectionLoop()
+        protected void Connect(TcpClient client)
         {
-            while (Status == NetStatus.Connected)
+            TcpClient = client;
+            NetStream = TcpClient.GetStream();
+            OnConnected();
+
+            ConnectionLoopThread = new Thread(DoConnectionLoop_Thread);
+            ConnectionLoopThread.Start();
+        }
+
+        void DoConnect_Thread(IPEndPoint endPoint)
+        {
+            Log.Verbose("Thread starting".AddCaller());
+
+            if (ConnectionStatus == ConnectionStatus.Connected)
             {
+                Log.Warning("Client already connected".AddCaller());
+                return;
+            }
+
+            if (ConnectThread != null && ConnectThread.ThreadState == ThreadState.Running)
+            {
+                Log.Warning("Connection thread is executing, can't connect".AddCaller());
+                return;
+            }
+
+            Close();
+
+            try
+            {
+                TcpClient = new TcpClient();
+                TcpClient.Connect(endPoint);
+
+                NetStream = TcpClient.GetStream();
+                OnConnected();
+
+                ConnectionLoopThread = new Thread(DoConnectionLoop_Thread); 
+                ConnectionLoopThread.Start();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Exception thrown while connecting to {address}:{port}".AddCaller(), endPoint.Address.ToString(), endPoint.Port);
+            }
+
+            Log.Verbose("Thread closing".AddCaller());
+        }
+
+        void DoConnectionLoop_Thread()
+        {
+            Log.Verbose("Thread started".AddCaller());
+
+            while (ConnectionStatus == ConnectionStatus.Connected)
+            {
+                if (StreamFlag == StreamFlag.Hold)
+                {
+                    Thread.Sleep(100);
+                    continue;
+                }
+
                 var data = ReceiveData();
                 if (data.Length > 0)
                 {
@@ -69,51 +117,43 @@ namespace Galaxy.Commons
                 }
             }
 
+            while (ConnectionStatus == ConnectionStatus.Error)
+            {
+                Thread.Sleep(1000);
+            }
+
             Close();
-            Disconnected?.Invoke();
+            OnDisconnected();
+
+            Log.Verbose("Thread stopped".AddCaller());
         }
 
         public byte[] ReceiveData()
         {
+            _isReading = true;
+
             try
             {
-                var buffer = new byte[1024 * 128];
+                var buffer = new byte[BufferSize];
                 var read = NetStream.Read(buffer);
 
-                return buffer.Take(read).ToArray();
-            }
-            catch (Exception ex)
-            {
-                if (ex is OperationCanceledException)
+                if (read == BufferSize)
                 {
-                    Log.Verbose("Read operation cancelled".AddCaller());
-                }
-                else if (ex is ObjectDisposedException or SocketException or IOException or InvalidOperationException)
-                {
-                    Log.Warning("Tried to receive data but stream is closed".AddCaller());
+                    return buffer;
                 }
                 else
                 {
-                    Log.Warning(ex, "Exception thrown while receiving data".AddCaller());
+                    return buffer.Take(read).ToArray();
                 }
-
-                return new byte[0];
-            }
-        }
-
-        public async Task<byte[]> ReceiveDataAsync()
-        {
-            try
-            {
-                var buffer = new byte[1024 * 128];
-                var read = await NetStream.ReadAsync(buffer);
-
-                return buffer.Take(read).ToArray();
             }
             catch (Exception ex)
             {
                 HandleException(ex);
                 return new byte[0];
+            }
+            finally
+            {
+                _isReading = false;
             }
         }
 
@@ -121,7 +161,7 @@ namespace Galaxy.Commons
         {
             try
             {
-
+                NetStream.Write(data);
             }
             catch (Exception ex)
             {
@@ -133,7 +173,7 @@ namespace Galaxy.Commons
         {
             try
             {
-
+                await NetStream.WriteAsync(data);
             }
             catch (Exception ex)
             {
@@ -141,22 +181,21 @@ namespace Galaxy.Commons
             }
         }
 
-        void HandleException(Exception ex)
+        public void Disconnect()
         {
-            if (ex is OperationCanceledException)
-            {
-                Log.Verbose("Read operation cancelled".AddCaller());
-            }
-            else if (ex is ObjectDisposedException or SocketException or IOException or InvalidOperationException)
-            {
-                Log.Warning("Tried to receive data async but stream is closed".AddCaller());
-                Status = NetStatus.Error;
-            }
-            else
-            {
-                Log.Warning(ex, "Exception thrown while receiving data".AddCaller());
-                Status = NetStatus.Error;
-            }
+            ConnectionStatus = ConnectionStatus.Disconnected;
+        }
+
+        void OnConnected()
+        {
+            ConnectionStatus = ConnectionStatus.Connected;
+            Connected?.Invoke();
+        }
+
+        void OnDisconnected()
+        {
+            ConnectionStatus = ConnectionStatus.Disconnected;
+            Disconnected?.Invoke();
         }
 
         void Close()
@@ -166,12 +205,38 @@ namespace Galaxy.Commons
 
             TcpClient = null;
             NetStream = null;
+        }
 
-            Status = NetStatus.Disconnected;
+        void HandleException(Exception ex)
+        {
+            Log.Verbose("Stream read/write threw an exception".AddCaller());
+
+            if (ex is OperationCanceledException)
+            {
+                Log.Verbose("Stream operation cancelled".AddCaller());
+                return;
+            }
+
+            if (ex is ObjectDisposedException or SocketException or IOException or InvalidOperationException)
+            {
+                Log.Warning("Tried to receive data async but stream is closed".AddCaller());
+            }
+            else
+            {
+                Log.Warning(ex, "Exception thrown while receiving data".AddCaller());
+            }
+
+            ConnectionStatus = ConnectionStatus.Error;
         }
     }
 
-    public enum NetStatus
+    public enum StreamFlag
+    {
+        Hold,
+        Receive,
+    }
+
+    public enum ConnectionStatus
     {
         Connected,
         Disconnected,
